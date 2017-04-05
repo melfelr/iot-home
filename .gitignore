@@ -87,3 +87,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Local owconfig.conf
+owconfig_local.conf
