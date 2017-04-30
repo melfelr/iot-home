@@ -1,6 +1,8 @@
 import os, re
 from time import sleep
 
+from pipelines import OutSensor
+
 
 DS18B20 = '28' # Programmable resolution digital thermometer
 DS2413 = '3A' # Dual channel addressable switch
@@ -14,26 +16,32 @@ class OWSensor(object):
     address = None
     description = None
     device = None
+    pipelines = None
+    log = None
     
-    def __init__(self, name, address, device, description=None):
+    def __init__(self, name, address, device, description=None, pipelines=None, log=None):
         self.name = name
         self.address = address
         self.device = device
         self.description = description
+        self.pipelines = pipelines
+        self.log = log
     
-    def do(self, action, port=None):
+    def do(self, action, port=None, fail_silently=False):
         if not self.ACTIONS:
             raise AttributeError('Actions is not set')
         
-        action_func = getattr(self, 'do_{}'.format(action.lower()))
+        action_func = getattr(self, 'do_{}'.format(action.lower()), None)
         
         if not callable(action_func):
-            raise AttributeError('Action is not exist')
+            if not fail_silently:
+                raise AttributeError('Action is not exist')
+            return
         
         return action_func(port=port)
 
 
-class OWTemperatureSensor(OWSensor):
+class OWTemperatureSensor(OWSensor, OutSensor):
     """ 1-wire programmable resolution digital thermometer representation """
     
     type = DS18B20
@@ -56,6 +64,14 @@ class OWTemperatureSensor(OWSensor):
             sensor_file.close()
         
         return value
+
+    @property
+    def value(self):
+        return self.temperature
+
+    @property
+    def values(self):
+        return [self.value]
     
     def do_value(self, **kwargs):
         return self.temperature
@@ -101,6 +117,18 @@ class OWIOSensor(OWSensor):
         sensor_file = open(sensor_filename, 'w')
         sensor_file.write(seq)
         sensor_file.close()
+
+    def read_sensor(self, port):
+        # Check for existing port
+        if port not in OWIOSensor.PORTS:
+            raise AttributeError('Port doesn\'t exist')
+
+        sensor_filename = self.filename(port)
+        sensor_file = open(sensor_filename, 'r')
+        sensor_value = sensor_file.readline()
+        sensor_file.close()
+
+        return sensor_value
     
     def turn_on(self, port):
         return self.write_sensor(
@@ -119,14 +147,14 @@ class OWIOSensor(OWSensor):
         sleep(0.5)
         self.turn_off(port)
     
-    def do(self, action, port=None):
+    def do(self, action, port=None, **kwargs):
         if not port:
             port = self.DEFAULT_PORT
         
         if not port:
             raise AttributeError('Port is not set')
         
-        return super(OWIOSensor, self).do(action, port)
+        return super(OWIOSensor, self).do(action, port, **kwargs)
     
     def do_once(self, port=None):
         self.turn_on_once(port)
@@ -154,6 +182,12 @@ class OWIOSensor(OWSensor):
             OWIOSensor.PORTS.get(port), 
             OWIOSensor.TURN_OFF_SEQ
         )
+
+    @property
+    def values(self):
+        values = [self.port_value(port) for port, name in OWIOSensor.PORTS.items()]
+
+        return values
         
 
 OWSENSOR_OBJ = {

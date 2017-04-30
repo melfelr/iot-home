@@ -1,7 +1,10 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python
 
 import os, sys, getopt, argparse
 from owsensors import get_owobject
+
+SENSOR_ALL = 'ALL'
+SILENT_ACTIONS = 'SEND'
 
 def main(argv):
     parser = argparse.ArgumentParser(description='Process some integers.')
@@ -39,7 +42,10 @@ def main(argv):
         
     
     config = {}
-    execfile(config_filename, config) 
+
+    with open(config_filename) as config_file:
+        config_code = compile(config_file.read(), config_filename, 'exec')
+        exec(config_code, config)
     
     if not config.get('OWSENSOR'):
         raise NameError('Configuration file is not correct!')
@@ -50,12 +56,16 @@ def main(argv):
         obj = get_owobject(sensor.get('address'))
         sensors[sensor['name'].upper()] = obj(**sensor)
 
-    sensor = sensors.get(sensor_name)
+    if sensor_name.upper() != SENSOR_ALL:
+        sensors = {sensor_name: sensors.get(sensor_name)}
 
-    if not sensor:
-        print 'Sensor does not exist'
+    if not sensors:
+        print(f"Sensor {sensor_name} does not exist.")
 
-    print sensor.do(action, port)
+    fail_silently = action.upper() in SILENT_ACTIONS
+
+    for name, sensor in sensors.items():
+        print(sensor.do(action=action, port=port, fail_silently=fail_silently))
 
 
 if __name__ == "__main__":
